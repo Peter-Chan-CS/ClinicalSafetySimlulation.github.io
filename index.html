@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clinical Safety Simulation</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --npc-bubble: #ffffff;
+            --player-bubble: #0084ff;
+            --player-text: #ffffff;
+            --text-main: #1c1e21;
+            --accent: #42b72a;
+            --danger: #fa3e3e;
+            --shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: -webkit-fill-available;
+            overflow: hidden;
+        }
+
+        header {
+            background: #fff;
+            padding: 10px 15px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .header-top { display: flex; justify-content: space-between; align-items: center; }
+        .title { font-weight: 800; font-size: 1rem; color: #050505; }
+        
+        .header-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .controls-row { display: flex; justify-content: space-between; align-items: center; }
+        .score-box { font-weight: bold; color: var(--player-bubble); background: #e7f3ff; padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
+        
+        #lang-toggle, .btn-header-reset { 
+            padding: 5px 10px; 
+            border-radius: 6px; 
+            border: 1px solid #ddd; 
+            background: #fff; 
+            cursor: pointer; 
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .btn-header-reset { color: var(--danger); border-color: #ffcccc; }
+
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            scroll-behavior: smooth;
+        }
+
+        .bubble {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.4;
+            animation: fadeIn 0.3s ease forwards;
+            word-wrap: break-word;
+        }
+
+        .bubble img {
+            width: 100%;
+            max-height: 200px;
+            object-fit: cover;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .npc { align-self: flex-start; background-color: var(--npc-bubble); box-shadow: var(--shadow); border-bottom-left-radius: 4px; }
+        .player { align-self: flex-end; background-color: var(--player-bubble); color: var(--player-text); border-bottom-right-radius: 4px; }
+        .feedback { align-self: center; background: #fff3cd; color: #856404; font-size: 12px; font-style: italic; border-radius: 8px; padding: 10px; text-align: center; border: 1px solid #ffeeba; width: 90%; }
+
+        #action-area {
+            background: #fff;
+            padding: 15px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            border: 1px solid #e4e6eb;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 13px;
+            text-align: left;
+            background: #f0f2f5;
+        }
+
+        .btn img { width: 45px; height: 45px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: #ddd; }
+        .btn-text { flex: 1; }
+        .btn-primary { background: var(--player-bubble); color: white; justify-content: center; font-weight: bold; border: none; padding: 15px; }
+
+        #overlay {
+            display: none;
+            position: fixed;
+            top:0; left:0; width:100%; height:100%;
+            background: rgba(255,255,255,0.98);
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-top">
+        <div class="title" id="ui-title">Clinical Safety Simulation</div>
+        <div class="header-actions">
+            <button class="btn-header-reset" onclick="confirmReset()" id="ui-refresh-btn">↺ Reset</button>
+            <select id="lang-toggle" onchange="changeLang(this.value)">
+                <option value="en">English</option>
+                <option value="zh">繁體中文</option>
+            </select>
+        </div>
+    </div>
+    <div class="controls-row">
+        <div class="score-box"><span id="ui-score-label">Score</span>: <span id="score">0</span> / <span id="total-q">8</span></div>
+    </div>
+</header>
+
+<div id="chat-container"></div>
+
+<div id="action-area">
+    <button id="optA" class="btn" onclick="handleChoice('A')">
+        <img id="imgA" src="" class="hidden">
+        <span id="textA" class="btn-text"></span>
+    </button>
+    <button id="optB" class="btn" onclick="handleChoice('B')">
+        <img id="imgB" src="" class="hidden">
+        <span id="textB" class="btn-text"></span>
+    </button>
+    <button id="restart" class="btn btn-primary hidden" onclick="resetGame()"></button>
+</div>
+
+<div id="overlay">
+    <h1 id="ui-win-msg" style="color: var(--accent); font-size: 2.5rem; margin-bottom: 10px;">SUCCESS!</h1>
+    <p id="ui-win-sub" style="margin-bottom: 20px;">Safety Protocols Mastered.</p>
+    <button class="btn btn-primary" style="min-width: 200px;" onclick="resetGame()" id="ui-play-again">Restart Simulation</button>
+</div>
+
+<script>
+    const translations = {
+        en: {
+            title: "Clinical Safety Simulation", score: "Score", refresh: "↺ Reset", refreshConfirm: "Reset simulation? Progress will be lost.",
+            win: "SUCCESS!", winSub: "Communication Skills Mastered.", playAgain: "Restart Simulation", restart: "Restart Simulation",
+            correct: "✅ Effective Communication.", incorrect: "❌ Risk of Escalation.", final: "Simulation complete. You scored "
+        },
+        zh: {
+            title: "臨床安全模擬訓練", score: "得分", refresh: "↺ 重設", refreshConfirm: "確定重設模擬？目前的進度將會遺失。",
+            win: "訓練達成！", winSub: "已掌握言語溝通與降溫技巧。", playAgain: "重新開始模擬", restart: "重新開始模擬",
+            correct: "✅ 有效溝通。", incorrect: "❌ 可能導致局勢升級。", final: "模擬結束。您的得分為 "
+        }
+    };
+
+    const questions = [
+        {
+            images: { q: "https://images.unsplash.com/photo-1557050543-4d5f4e07ef46?w=400", a: "https://images.unsplash.com/photo-1540573133985-87b6da6d54a9?w=200", b: "https://images.unsplash.com/photo-1508061461508-cb18c242f556?w=200" },
+            en: { q: "A patient is visibly upset about their breakfast being cold. How do you start the conversation?", a: "Open-ended: 'I can see you're upset. Can you tell me more?'", b: "Closed: 'Is your food cold? I will get another one.'", feedback: "Open-ended questions allow the patient to vent." },
+            zh: { q: "患者對早餐變冷感到明顯不滿。您會如何開始對話？", a: "開放式：「我看得出您很不開心。能告訴我發生了什麼事嗎？」", b: "封閉式：「您的食物冷了嗎？我現在去幫您換一份。」", feedback: "開放式問題讓患者有機會宣洩情緒。" },
+            correct: 'A'
+        },
+        {
+            images: { q: "", a: "", b: "" },
+            en: { q: "The patient is speaking very loudly and quickly. How should you respond?", a: "Speak with a moderate speed and a firm, polite tone.", b: "Match their volume so they can hear you.", feedback: "Moderate speed models calm behavior." },
+            zh: { q: "患者說話聲音很大且速度很快。您應如何回應？", a: "以中等語速及堅定且有禮的語氣回覆。", b: "配合對方的音量說話，確保他們聽見。", feedback: "中等語速能引導患者恢復冷靜。" },
+            correct: 'A'
+        },
+        {
+            images: { q: "", a: "", b: "" },
+            en: { q: "You need the patient to sit down for a safe blood pressure check.", a: "Simple/Positive: 'Please sit in this chair so I can help you safely.'", b: "Critical: 'You shouldn't be standing up while I'm working.'", feedback: "Avoid critical language that sounds like an attack." },
+            zh: { q: "您需要患者坐下以安全測量血壓。", a: "簡單正面：「請坐在這張椅子上，讓我安全地為您檢查。」", b: "批評語氣：「我在工作時，您不應該一直站著。」", feedback: "避免使用聽起來像攻擊的批評性語言。" },
+            correct: 'A'
+        },
+        {
+            images: { q: "", a: "", b: "" },
+            en: { q: "The patient is confused about their meds. What is the best technique?", a: "Repeat important information clearly.", b: "Explain everything once very quickly to save time.", feedback: "Repeating info ensures clarity and shows attention." },
+            zh: { q: "患者對用藥感到困惑。最佳技巧是什麼？", a: "清晰地重複重要信息。", b: "快速解釋一遍所有內容以節省時間。", feedback: "重複重要信息能確保清晰並展現專注。" },
+            correct: 'A'
+        },
+        {
+            images: { q: "", a: "", b: "" },
+            en: { q: "Reviewing a history of head injury and violence threats.", a: "Acknowledge history and ensure a peer is nearby.", b: "Assume they are calm now and enter alone.", feedback: "Safety protocols protect both staff and patients." },
+            zh: { q: "查閱有頭部受傷及暴力威脅史的病歷。", a: "確認病史，並確保有同事在附近。", b: "假設他們已冷靜，獨自進入。", feedback: "安全規程旨在保護工作人員與患者。" },
+            correct: 'A'
+        },
+        {
+            images: { q: "", a: "", b: "" },
+            en: { q: "A patient starts shouting profanities at you in the hallway.", a: "Tone check: 'I want to help, but I cannot talk while you shout.'", b: "Threaten: 'Stop that now or I'm calling security.'", feedback: "Set firm boundaries without using threats." },
+            zh: { q: "患者在走廊上開始對您辱罵。", a: "留意語氣：「我想幫助您，但大聲叫喊時我無法溝通。」", b: "威脅：「立刻停止，否則我叫保安。」", feedback: "建立堅定界限，而非使用威脅。" },
+            correct: 'A'
+        },
+        {
+            images: { q: "", a: "", b: "" },
+            en: { q: "The patient is in pain but acting aggressively.", a: "Appropriate comfort: 'I'm sorry you're in pain. Let's see what we can do.'", b: "Ignore them until they calm down.", feedback: "Showing kindness (no hostility) helps de-escalation." },
+            zh: { q: "患者抱怨疼痛但表現出攻擊性。", a: "適當安慰：「很抱歉您感到疼痛。我們來看看如何幫您。」", b: "在他們冷靜下來之前不予理會。", feedback: "展現友善（無敵意）有助於降溫。" },
+            correct: 'A'
+        },
+        {
+            images: { q: "", a: "", b: "" },
+            en: { q: "How do you confirm a patient understands the care plan?", a: "Open-ended: 'What is your understanding of this plan?'", b: "Closed: 'Do you understand what I said?'", feedback: "Open-ended questions reveal actual comprehension gaps." },
+            zh: { q: "您如何確認患者明白護理計劃？", a: "開放式：「您對這個計劃的理解是什麼？」", b: "封閉式：「您明白我剛才說的話嗎？」", feedback: "開放式問題能揭示真實的理解差距。" },
+            correct: 'A'
+        }
+    ];
+
+    let currentLang = 'en';
+    let currentQ = 0;
+    let score = 0;
+
+    function updateUI() {
+        const t = translations[currentLang];
+        document.getElementById('ui-title').textContent = t.title;
+        document.getElementById('ui-score-label').textContent = t.score;
+        document.getElementById('ui-refresh-btn').textContent = t.refresh;
+        document.getElementById('ui-win-msg').textContent = t.win;
+        document.getElementById('ui-win-sub').textContent = t.winSub;
+        document.getElementById('ui-play-again').textContent = t.playAgain;
+        document.getElementById('restart').textContent = t.restart;
+        document.getElementById('total-q').textContent = questions.length;
+        
+        if (currentQ < questions.length) {
+            const q = questions[currentQ];
+            document.getElementById('textA').textContent = q[currentLang].a;
+            document.getElementById('textB').textContent = q[currentLang].b;
+            handleBtnImage('imgA', q.images.a);
+            handleBtnImage('imgB', q.images.b);
+        }
+    }
+
+    function handleBtnImage(id, src) {
+        const img = document.getElementById(id);
+        if (src && src.trim() !== "") {
+            img.src = src;
+            img.classList.remove('hidden');
+        } else {
+            img.classList.add('hidden');
+        }
+    }
+
+    function changeLang(val) {
+        currentLang = val;
+        updateUI();
+        const chat = document.getElementById('chat-container');
+        if (chat.children.length > 0 && currentQ < questions.length) {
+            const lastNpc = Array.from(chat.children).reverse().find(m => m.classList.contains('npc') && !m.classList.contains('feedback'));
+            if (lastNpc && !lastNpc.textContent.includes('✅') && !lastNpc.textContent.includes('❌')) {
+                const imgTag = lastNpc.querySelector('img');
+                lastNpc.innerHTML = '';
+                if (imgTag) lastNpc.appendChild(imgTag);
+                const span = document.createElement('span');
+                span.textContent = questions[currentQ][currentLang].q;
+                lastNpc.appendChild(span);
+            }
+        }
+    }
+
+    function addMessage(text, type, imgSrc = null) {
+        const div = document.createElement('div');
+        div.className = `bubble ${type}`;
+        if (imgSrc && imgSrc.trim() !== "") {
+            const img = document.createElement('img');
+            img.src = imgSrc;
+            div.appendChild(img);
+        }
+        const span = document.createElement('span');
+        span.textContent = text;
+        div.appendChild(span);
+        const chat = document.getElementById('chat-container');
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function handleChoice(choice) {
+        const qData = questions[currentQ];
+        const t = translations[currentLang];
+        const choiceLower = choice.toLowerCase();
+        
+        addMessage(qData[currentLang][choiceLower], 'player', qData.images[choiceLower]);
+        document.getElementById('optA').classList.add('hidden');
+        document.getElementById('optB').classList.add('hidden');
+
+        setTimeout(() => {
+            if (choice === qData.correct) {
+                score++;
+                document.getElementById('score').textContent = score;
+                addMessage(t.correct, 'npc');
+            } else {
+                addMessage(t.incorrect, 'npc');
+            }
+            addMessage(qData[currentLang].feedback, 'feedback');
+            currentQ++;
+
+            setTimeout(() => {
+                if(currentQ === questions.length) {
+                    if (score >= 6) document.getElementById('overlay').style.display = 'flex';
+                    else endGame();
+                } else {
+                    initQuestion();
+                }
+            }, 1200);
+        }, 600);
+    }
+
+    function initQuestion() {
+        updateUI();
+        if (currentQ < questions.length) {
+            addMessage(questions[currentQ][currentLang].q, 'npc', questions[currentQ].images.q);
+            document.getElementById('optA').classList.remove('hidden');
+            document.getElementById('optB').classList.remove('hidden');
+            document.getElementById('restart').classList.add('hidden');
+        }
+    }
+
+    function endGame() {
+        const t = translations[currentLang];
+        addMessage(`${t.final} ${score} / ${questions.length}.`, 'npc');
+        document.getElementById('restart').classList.remove('hidden');
+    }
+
+    function confirmReset() {
+        if (confirm(translations[currentLang].refreshConfirm)) resetGame();
+    }
+
+    function resetGame() {
+        score = 0;
+        currentQ = 0;
+        document.getElementById('score').textContent = "0";
+        document.getElementById('chat-container').innerHTML = '';
+        document.getElementById('overlay').style.display = 'none';
+        initQuestion();
+    }
+
+    // Initialize on load
+    window.onload = initQuestion;
+</script>
+</body>
+</html>
